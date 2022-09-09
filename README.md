@@ -1,2 +1,3 @@
 # RenderBox
-Rendering sandbox.
+
+Rendering sandbox. Developed with Vulkan on Apple Silicon.
