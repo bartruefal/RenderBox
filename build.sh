@@ -13,4 +13,4 @@ mkdir build
 clang++ -Wall -g -O0 -std=c++17 -o build/RenderBox \
                                 -I$GLFW_INCLUDE_PATH -I$VULKAN_INCLUDE_PATH \
                                 -L$GLFW_LIBRARY_PATH -L$VULKAN_LIBRARY_PATH \
-                                -l$VULKAN_LIB -l$GLFW_LIB main.cpp
+                                -l$VULKAN_LIB -l$GLFW_LIB main_macOS.cpp
