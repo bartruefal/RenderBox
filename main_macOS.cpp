@@ -5,11 +5,11 @@
 #include <stdio.h>
 #include <vector>
 
-VkRenderPass createRenderPass(VkDevice device){
+VkRenderPass createRenderPass(VkDevice device, VkFormat swapchainFormat){
     VkAttachmentDescription attachments[1]{};
-    attachments[0].format = VK_FORMAT_B8G8R8A8_UNORM;
+    attachments[0].format = swapchainFormat;
     attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -221,7 +221,7 @@ int main() {
         VK_CHECK(vkCreateFence(vkState.device, &fenceCreateInfo, nullptr, &fences[i]));
     }
 
-    VkRenderPass triangleRenderPass{ createRenderPass(vkState.device) };
+    VkRenderPass triangleRenderPass{ createRenderPass(vkState.device, vkSwapchain.surfaceFormat.format) };
 
     std::vector<VkFramebuffer> framebuffers(vkSwapchain.images.size());
     for (int i{}; i < vkSwapchain.images.size(); i++){

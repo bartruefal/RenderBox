@@ -1,9 +1,9 @@
 #version 450
 
 const vec3 vertices[] = {
-    vec3(0.0f, 0.5f, 0.0f),
-    vec3(0.5f, -0.5f, 0.0f),
-    vec3(-0.5f, -0.5f, 0.0f)
+    vec3(0.5f, 0.5f, 0.0f),
+    vec3(0.3f, -0.5f, 0.0f),
+    vec3(-0.5f, 0.1f, 0.0f)
 };
 
 void main(){
