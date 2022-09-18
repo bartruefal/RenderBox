@@ -13,8 +13,8 @@ VkRenderPass createRenderPass(VkDevice device, VkFormat swapchainFormat){
     attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentReference colorRef{};
     colorRef.attachment = 0;
@@ -25,30 +25,11 @@ VkRenderPass createRenderPass(VkDevice device, VkFormat swapchainFormat){
     subpassDescr.colorAttachmentCount = 1;
     subpassDescr.pColorAttachments = &colorRef;
 
-    VkSubpassDependency subpassDeps[2]{};
-    subpassDeps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-    subpassDeps[0].dstSubpass = 0;
-    subpassDeps[0].srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    subpassDeps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    subpassDeps[0].srcAccessMask = 0;
-    subpassDeps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    subpassDeps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-    subpassDeps[1].srcSubpass = 0;
-    subpassDeps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-    subpassDeps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    subpassDeps[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    subpassDeps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    subpassDeps[1].dstAccessMask = 0;
-    subpassDeps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
     VkRenderPassCreateInfo renderPassCreateInfo{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
     renderPassCreateInfo.attachmentCount = 1;
     renderPassCreateInfo.pAttachments = attachments;
     renderPassCreateInfo.subpassCount = 1;
     renderPassCreateInfo.pSubpasses = &subpassDescr;
-    renderPassCreateInfo.dependencyCount = 2;
-    renderPassCreateInfo.pDependencies = subpassDeps;
 
     VkRenderPass renderPass{VK_NULL_HANDLE};
     VK_CHECK(vkCreateRenderPass(device, &renderPassCreateInfo, nullptr, &renderPass));
@@ -232,7 +213,7 @@ int main() {
     VkViewport viewport{ 0.0f, 0.0f, (float)windowWidth, (float)windowHeight, 0.0f, 1.0f };
     VkPipeline trianglePipeline{ createGraphicsPipeline(vkState.device, triangleRenderPass, viewport) };
 
-    while(!glfwWindowShouldClose(window)){
+    while (!glfwWindowShouldClose(window)){
         uint32_t nextImageID{};
         VkResult acquireRes{vkAcquireNextImageKHR(vkState.device, vkSwapchain.swapchain, -1, imageAcquireSemaphore, VK_NULL_HANDLE, &nextImageID)};
         assert(acquireRes == VK_SUCCESS || acquireRes == VK_SUBOPTIMAL_KHR);
@@ -245,6 +226,26 @@ int main() {
 
         VK_CHECK(vkBeginCommandBuffer(cmdBuffers[nextImageID], &cmdBeginInfo));
         {
+            {
+                VkImageMemoryBarrier presentToRenderBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+                presentToRenderBarrier.srcAccessMask = 0;
+                presentToRenderBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                presentToRenderBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                presentToRenderBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                presentToRenderBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                presentToRenderBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                presentToRenderBarrier.image = vkSwapchain.images[nextImageID];
+                presentToRenderBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                presentToRenderBarrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+                presentToRenderBarrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+                vkCmdPipelineBarrier(cmdBuffers[nextImageID],
+                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                    VK_DEPENDENCY_BY_REGION_BIT,
+                                    0, nullptr, 0, nullptr, 1, &presentToRenderBarrier);
+            }
+
             VkClearValue clearValue{{{0.2f, 0.3f, 0.4f, 1.0f}}};
 
             VkRenderPassBeginInfo renderPassBeginInfo{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
@@ -261,6 +262,26 @@ int main() {
             vkCmdDraw(cmdBuffers[nextImageID], 3, 1, 0, 0);
 
             vkCmdEndRenderPass(cmdBuffers[nextImageID]);
+
+            {
+                VkImageMemoryBarrier renderToPresentBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+                renderToPresentBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                renderToPresentBarrier.dstAccessMask = 0;
+                renderToPresentBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                renderToPresentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                renderToPresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                renderToPresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                renderToPresentBarrier.image = vkSwapchain.images[nextImageID];
+                renderToPresentBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                renderToPresentBarrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+                renderToPresentBarrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+                vkCmdPipelineBarrier(cmdBuffers[nextImageID],
+                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                    VK_DEPENDENCY_BY_REGION_BIT,
+                                    0, nullptr, 0, nullptr, 1, &renderToPresentBarrier);
+            }
         }
         VK_CHECK(vkEndCommandBuffer(cmdBuffers[nextImageID]));
 
@@ -277,7 +298,7 @@ int main() {
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = &imageReleaseSemaphore;
 
-        vkQueueSubmit(vkState.renderQueue, 1, &submitInfo, fences[nextImageID]);
+        VK_CHECK(vkQueueSubmit(vkState.renderQueue, 1, &submitInfo, fences[nextImageID]));
 
         VkPresentInfoKHR presentInfo{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
         presentInfo.waitSemaphoreCount = 1;
@@ -286,11 +307,12 @@ int main() {
         presentInfo.pSwapchains = &vkSwapchain.swapchain;
         presentInfo.pImageIndices = &nextImageID;
 
-        vkQueuePresentKHR(vkState.renderQueue, &presentInfo);
+        VkResult presentRes{ vkQueuePresentKHR(vkState.renderQueue, &presentInfo) };
+        assert(presentRes == VK_SUCCESS || presentRes == VK_SUBOPTIMAL_KHR);
 
         glfwPollEvents();
     }
-
+ 
     // TODO: Destroy objects
 
     glfwDestroyWindow(window);
