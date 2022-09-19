@@ -37,25 +37,13 @@ VkRenderPass createRenderPass(VkDevice device, VkFormat swapchainFormat){
     return renderPass;
 }
 
-VkFramebuffer createFramebuffer(VkDevice device, VkRenderPass renderPass, VkImage image, VkFormat format, uint32_t width, uint32_t height){
-    VkImageViewCreateInfo imageViewCreateInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-    imageViewCreateInfo.image = image;
-    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    imageViewCreateInfo.format = format;
-    imageViewCreateInfo.components = {VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A};
-    imageViewCreateInfo.subresourceRange.layerCount = 1;
-    imageViewCreateInfo.subresourceRange.levelCount = 1;
-    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-
-    VkImageView swapchainView{};
-    VK_CHECK(vkCreateImageView(device, &imageViewCreateInfo, nullptr, &swapchainView));
-
+VkFramebuffer createFramebuffer(VkDevice device, VkRenderPass renderPass, VkImageView imageView, VkFormat format, VkExtent2D extent){
     VkFramebufferCreateInfo createInfo{ VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
     createInfo.renderPass = renderPass;
     createInfo.attachmentCount = 1;
-    createInfo.pAttachments = &swapchainView;
-    createInfo.width = width;
-    createInfo.height = height;
+    createInfo.pAttachments = &imageView;
+    createInfo.width = extent.width;
+    createInfo.height = extent.height;
     createInfo.layers = 1;
 
     VkFramebuffer framebuffer{};
@@ -164,12 +152,7 @@ int main() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* window = glfwCreateWindow(1024, 768, "Render Box", nullptr, nullptr);
 
-    int windowWidth{};
-    int windowHeight{};
-    glfwGetWindowSize(window, &windowWidth, &windowHeight);
-
     VulkanState vkState{ initializeVulkanState() };
-
     VulkanSwapchain vkSwapchain{ createSwapchain(window, vkState) };
 
     VkCommandPoolCreateInfo cmdPoolCreateInfo{ VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
@@ -206,11 +189,11 @@ int main() {
 
     std::vector<VkFramebuffer> framebuffers(vkSwapchain.images.size());
     for (int i{}; i < vkSwapchain.images.size(); i++){
-        framebuffers[i] = createFramebuffer(vkState.device, triangleRenderPass, vkSwapchain.images[i],
-                                            vkSwapchain.surfaceFormat.format, windowWidth, windowHeight);
+        framebuffers[i] = createFramebuffer(vkState.device, triangleRenderPass, vkSwapchain.imageViews[i],
+                                            vkSwapchain.surfaceFormat.format, vkSwapchain.extent);
     }
 
-    VkViewport viewport{ 0.0f, 0.0f, (float)windowWidth, (float)windowHeight, 0.0f, 1.0f };
+    VkViewport viewport{ 0.0f, 0.0f, (float)vkSwapchain.extent.width, (float)vkSwapchain.extent.height, 0.0f, 1.0f };
     VkPipeline trianglePipeline{ createGraphicsPipeline(vkState.device, triangleRenderPass, viewport) };
 
     while (!glfwWindowShouldClose(window)){
@@ -251,8 +234,8 @@ int main() {
             VkRenderPassBeginInfo renderPassBeginInfo{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
             renderPassBeginInfo.renderPass = triangleRenderPass;
             renderPassBeginInfo.framebuffer = framebuffers[nextImageID];
-            renderPassBeginInfo.renderArea.extent.width = windowWidth;
-            renderPassBeginInfo.renderArea.extent.height = windowHeight;
+            renderPassBeginInfo.renderArea.extent.width = vkSwapchain.extent.width;
+            renderPassBeginInfo.renderArea.extent.height = vkSwapchain.extent.height;
             renderPassBeginInfo.clearValueCount = 1;
             renderPassBeginInfo.pClearValues = &clearValue;
 

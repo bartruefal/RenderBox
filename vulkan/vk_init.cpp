@@ -18,6 +18,7 @@ VulkanState initializeVulkanState(){
     }
 
     instanceExtensionNames.push_back("VK_KHR_portability_enumeration");
+    instanceExtensionNames.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 
     const char* layerNames[]{
         "VK_LAYER_KHRONOS_validation"
@@ -32,6 +33,8 @@ VulkanState initializeVulkanState(){
     instanceInfo.ppEnabledExtensionNames = instanceExtensionNames.data();
 
     VK_CHECK(vkCreateInstance(&instanceInfo, nullptr, &vkState.instance));
+
+    registerDebugReport(vkState.instance);
 
     // TODO: select proper physical device
     uint32_t physDevCount{};
