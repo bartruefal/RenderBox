@@ -63,3 +63,12 @@ VulkanSwapchain createSwapchain(GLFWwindow* window, VulkanState vkState){
 
     return swapchain;
 }
+
+void destroySwapchain(VkInstance instance, VkDevice device, VulkanSwapchain& swapchain){
+    for (int i{}; i < swapchain.imageViews.size(); i++){
+        vkDestroyImageView(device, swapchain.imageViews[i], nullptr);
+    }
+
+    vkDestroySwapchainKHR(device, swapchain.swapchain, nullptr);
+    vkDestroySurfaceKHR(instance, swapchain.surface, nullptr);
+}

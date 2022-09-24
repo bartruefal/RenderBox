@@ -28,22 +28,32 @@ VkBool32 debugReportCallback(VkDebugReportFlagsEXT flags, VkDebugReportObjectTyp
     return VK_FALSE;
 }
 
-void registerDebugReport(VkInstance instance){
+VkDebugReportCallbackEXT registerDebugReport(VkInstance instance){
     VkDebugReportCallbackCreateInfoEXT callbackInfo{ VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT };
     callbackInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
     callbackInfo.pfnCallback = debugReportCallback;
 
-    PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
+    PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT{ (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT") };
     assert(vkCreateDebugReportCallbackEXT);
 
     VkDebugReportCallbackEXT debugCallback{};
     VK_CHECK(vkCreateDebugReportCallbackEXT(instance, &callbackInfo, nullptr, &debugCallback));
+
+    return debugCallback;
+}
+
+void destroyDebugReportCallback(VkInstance instance, VkDebugReportCallbackEXT debugCallback){
+    PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT{ (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT") };
+    assert(vkDestroyDebugReportCallbackEXT);
+
+    vkDestroyDebugReportCallbackEXT(instance, debugCallback, nullptr);
 }
 
 struct VulkanState{
     VkInstance instance;
     VkPhysicalDevice physicalDevice;
     VkDevice device;
+    VkDebugReportCallbackEXT debugCallback;
     VkQueue renderQueue;
     uint32_t renderQueueFamilyID;
 };
@@ -55,6 +65,12 @@ struct VulkanSwapchain{
     VkExtent2D extent;
     std::vector<VkImage> images;
     std::vector<VkImageView> imageViews;
+};
+
+struct GraphicsPipeline{
+    VkPipeline pipeline;
+    VkShaderModule vertexShader;
+    VkShaderModule fragmentShader;
 };
 
 #endif // VK_HELPERS_H

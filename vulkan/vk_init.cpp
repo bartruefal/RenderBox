@@ -34,7 +34,7 @@ VulkanState initializeVulkanState(){
 
     VK_CHECK(vkCreateInstance(&instanceInfo, nullptr, &vkState.instance));
 
-    registerDebugReport(vkState.instance);
+    vkState.debugCallback = registerDebugReport(vkState.instance);
 
     // TODO: select proper physical device
     uint32_t physDevCount{};
@@ -95,4 +95,10 @@ VulkanState initializeVulkanState(){
     vkGetDeviceQueue2(vkState.device, &queueInfo, &vkState.renderQueue);
 
     return vkState;
+}
+
+void destroyVulkanState(VulkanState vkState){
+    vkDestroyDevice(vkState.device, nullptr);
+    destroyDebugReportCallback(vkState.instance, vkState.debugCallback);
+    vkDestroyInstance(vkState.instance, nullptr);
 }
