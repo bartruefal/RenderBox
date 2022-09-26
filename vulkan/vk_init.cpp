@@ -18,10 +18,14 @@ VulkanState initializeVulkanState(){
     }
 
     instanceExtensionNames.push_back("VK_KHR_portability_enumeration");
+#ifdef RB_DEBUG
     instanceExtensionNames.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+#endif
 
     const char* layerNames[]{
+#ifdef RB_DEBUG
         "VK_LAYER_KHRONOS_validation"
+#endif
     };
 
     VkInstanceCreateInfo instanceInfo{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
@@ -33,7 +37,6 @@ VulkanState initializeVulkanState(){
     instanceInfo.ppEnabledExtensionNames = instanceExtensionNames.data();
 
     VK_CHECK(vkCreateInstance(&instanceInfo, nullptr, &vkState.instance));
-
     vkState.debugCallback = registerDebugReport(vkState.instance);
 
     // TODO: select proper physical device
@@ -76,8 +79,7 @@ VulkanState initializeVulkanState(){
 
     const char* deviceExtensionNames[]{
         "VK_KHR_portability_subset",
-        "VK_KHR_swapchain",
-        "VK_KHR_create_renderpass2"
+        "VK_KHR_swapchain"
     };
 
     VkDeviceCreateInfo devInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };

@@ -29,6 +29,7 @@ VkBool32 debugReportCallback(VkDebugReportFlagsEXT flags, VkDebugReportObjectTyp
 }
 
 VkDebugReportCallbackEXT registerDebugReport(VkInstance instance){
+#ifdef RB_DEBUG
     VkDebugReportCallbackCreateInfoEXT callbackInfo{ VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT };
     callbackInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
     callbackInfo.pfnCallback = debugReportCallback;
@@ -40,13 +41,18 @@ VkDebugReportCallbackEXT registerDebugReport(VkInstance instance){
     VK_CHECK(vkCreateDebugReportCallbackEXT(instance, &callbackInfo, nullptr, &debugCallback));
 
     return debugCallback;
+#endif
+
+    return 0;
 }
 
 void destroyDebugReportCallback(VkInstance instance, VkDebugReportCallbackEXT debugCallback){
+#ifdef RB_DEBUG
     PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT{ (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT") };
     assert(vkDestroyDebugReportCallbackEXT);
 
     vkDestroyDebugReportCallbackEXT(instance, debugCallback, nullptr);
+#endif
 }
 
 struct VulkanState{
