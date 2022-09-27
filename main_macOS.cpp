@@ -2,81 +2,17 @@
 #include "vulkan/vk_init.cpp"
 #include "vulkan/vk_swapchain.cpp"
 #include "vulkan/vk_pipeline.cpp"
+#include "vulkan/vk_renderpass.cpp"
+#include "vulkan/vk_descriptor_set.cpp"
+#include "vulkan/vk_cmd_buffers.cpp"
+#include "vulkan/vk_memory.cpp"
 #include <GLFW/glfw3.h>
 #include <stdio.h>
 #include <vector>
 
-struct UniformData{
+struct TriangleUniformData{
     float time;
 };
-
-struct SimpleUBO{
-    VkBuffer buffer;
-    VkDeviceMemory deviceMemory;
-    UniformData* data;
-};
-
-uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t memoryTypeMask, VkMemoryPropertyFlags memoryFlags){
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
-
-    for (int i{}; i < memProperties.memoryTypeCount; i++){
-        if ((memoryTypeMask & (1 << i)) &&
-            (memProperties.memoryTypes[i].propertyFlags & memoryFlags)){
-            return i;
-        }
-    }
-
-    assert(!"Memory type not found!");
-    return -1;
-}
-
-VkRenderPass createRenderPass(VkDevice device, VkFormat swapchainFormat){
-    VkAttachmentDescription attachments[1]{};
-    attachments[0].format = swapchainFormat;
-    attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference colorRef{};
-    colorRef.attachment = 0;
-    colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkSubpassDescription subpassDescr{};
-    subpassDescr.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpassDescr.colorAttachmentCount = 1;
-    subpassDescr.pColorAttachments = &colorRef;
-
-    VkRenderPassCreateInfo renderPassCreateInfo{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
-    renderPassCreateInfo.attachmentCount = 1;
-    renderPassCreateInfo.pAttachments = attachments;
-    renderPassCreateInfo.subpassCount = 1;
-    renderPassCreateInfo.pSubpasses = &subpassDescr;
-
-    VkRenderPass renderPass{};
-    VK_CHECK(vkCreateRenderPass(device, &renderPassCreateInfo, nullptr, &renderPass));
-
-    return renderPass;
-}
-
-VkFramebuffer createFramebuffer(VkDevice device, VkRenderPass renderPass, VkImageView imageView, VkFormat format, VkExtent2D extent){
-    VkFramebufferCreateInfo createInfo{ VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
-    createInfo.renderPass = renderPass;
-    createInfo.attachmentCount = 1;
-    createInfo.pAttachments = &imageView;
-    createInfo.width = extent.width;
-    createInfo.height = extent.height;
-    createInfo.layers = 1;
-
-    VkFramebuffer framebuffer{};
-    VK_CHECK(vkCreateFramebuffer(device, &createInfo, nullptr, &framebuffer));
-
-    return framebuffer;
-}
 
 int main() {
     int glfwInitResult{ glfwInit() };
@@ -88,20 +24,8 @@ int main() {
     VulkanState vkState{ initializeVulkanState() };
     VulkanSwapchain vkSwapchain{ createSwapchain(window, vkState) };
 
-    VkCommandPoolCreateInfo cmdPoolCreateInfo{ VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
-    cmdPoolCreateInfo.queueFamilyIndex = vkState.renderQueueFamilyID;
-    cmdPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-
-    VkCommandPool cmdPool{};
-    VK_CHECK(vkCreateCommandPool(vkState.device, &cmdPoolCreateInfo, nullptr, &cmdPool));
-
-    VkCommandBufferAllocateInfo cmdBuffersAllocInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-    cmdBuffersAllocInfo.commandBufferCount = vkSwapchain.images.size();
-    cmdBuffersAllocInfo.commandPool = cmdPool;
-    cmdBuffersAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-
     std::vector<VkCommandBuffer> cmdBuffers(vkSwapchain.images.size());
-    VK_CHECK(vkAllocateCommandBuffers(vkState.device, &cmdBuffersAllocInfo, cmdBuffers.data()));
+    VkCommandPool cmdPool{ allocateCommandBuffers(vkState, cmdBuffers.data(), cmdBuffers.size()) };
 
     VkSemaphoreCreateInfo semCreateInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
     VkSemaphore imageAcquireSemaphore{};
@@ -126,6 +50,12 @@ int main() {
                                             vkSwapchain.surfaceFormat.format, vkSwapchain.extent);
     }
 
+    std::vector<SimpleUBO> triangleUBOs(vkSwapchain.images.size());
+    VkDeviceMemory triangleMemory{ allocateSimpleUBOs(vkState, triangleUBOs.data(),
+                                                      vkSwapchain.images.size(), sizeof(TriangleUniformData),
+                                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) };
+
     VkDescriptorSetLayout triangleDescrLayout{};
     {
         VkDescriptorSetLayoutBinding binding{};
@@ -141,91 +71,12 @@ int main() {
         VK_CHECK(vkCreateDescriptorSetLayout(vkState.device, &descrSetLayoutInfo, nullptr, &triangleDescrLayout));
     }
 
-    VkDescriptorPool triangleDescrPool{};
     std::vector<VkDescriptorSet> triangleDescrSets(vkSwapchain.images.size());
-    {
-        VkDescriptorPoolSize descrPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (uint32_t)vkSwapchain.images.size() };
+    VkDescriptorPool triangleDescrPool{ allocateUBODescriptorSets(vkState.device, triangleDescrLayout, 
+                                                               triangleDescrSets.data(), triangleDescrSets.size()) };
 
-        VkDescriptorPoolCreateInfo descrPoolCreateInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
-        descrPoolCreateInfo.maxSets = vkSwapchain.images.size();
-        descrPoolCreateInfo.poolSizeCount = 1;
-        descrPoolCreateInfo.pPoolSizes = &descrPoolSize;
-
-        VK_CHECK(vkCreateDescriptorPool(vkState.device, &descrPoolCreateInfo, nullptr, &triangleDescrPool));
-
-        std::vector<VkDescriptorSetLayout> triangleDescrSetLayouts(vkSwapchain.images.size(), triangleDescrLayout);
-
-        VkDescriptorSetAllocateInfo descrSetAllocInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-        descrSetAllocInfo.descriptorPool = triangleDescrPool;
-        descrSetAllocInfo.descriptorSetCount = vkSwapchain.images.size();
-        descrSetAllocInfo.pSetLayouts = triangleDescrSetLayouts.data();
-
-        VK_CHECK(vkAllocateDescriptorSets(vkState.device, &descrSetAllocInfo, triangleDescrSets.data()));
-    }
-
-    std::vector<SimpleUBO> triangleUBOs(vkSwapchain.images.size());
-    for (int i{}; i < vkSwapchain.images.size(); i++)
-    {
-        VkBufferCreateInfo bufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-        bufferInfo.size = sizeof(UniformData);
-        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        bufferInfo.queueFamilyIndexCount = 1;
-        bufferInfo.pQueueFamilyIndices = &vkState.renderQueueFamilyID;
-
-        VK_CHECK(vkCreateBuffer(vkState.device, &bufferInfo, nullptr, &triangleUBOs[i].buffer));
-    }
-
-    {
-        VkDeviceMemory triangleBufferMemory{};
-
-        VkMemoryRequirements bufferReqs{};
-        vkGetBufferMemoryRequirements(vkState.device, triangleUBOs[0].buffer, &bufferReqs);
-
-        VkMemoryAllocateInfo allocInfo{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        allocInfo.memoryTypeIndex = findMemoryType(vkState.physicalDevice, bufferReqs.memoryTypeBits,
-                                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        allocInfo.allocationSize = bufferReqs.size * vkSwapchain.images.size();
-
-        VK_CHECK(vkAllocateMemory(vkState.device, &allocInfo, nullptr, &triangleBufferMemory));
-
-        UniformData* mappedData{};
-        VK_CHECK(vkMapMemory(vkState.device, triangleBufferMemory, 0, bufferReqs.size * vkSwapchain.images.size(), 0, (void**)&mappedData));
-
-        for (int i{}; i < vkSwapchain.images.size(); i++)
-        {
-            VkDeviceSize offset{i * bufferReqs.size};
-            triangleUBOs[i].deviceMemory = triangleBufferMemory;
-            triangleUBOs[i].data = mappedData + i;
-
-            VK_CHECK(vkBindBufferMemory(vkState.device, triangleUBOs[i].buffer, triangleBufferMemory, offset));
-        }
-    }
-
-    {
-        std::vector<VkDescriptorBufferInfo> bufferInfos(vkSwapchain.images.size());
-        for (int i{}; i < vkSwapchain.images.size(); i++)
-        {
-            bufferInfos[i].buffer = triangleUBOs[i].buffer;
-            bufferInfos[i].offset = 0;
-            bufferInfos[i].range = sizeof(UniformData);
-        }
-
-        std::vector<VkWriteDescriptorSet> descrWrites(vkSwapchain.images.size());
-        for (int i{}; i < vkSwapchain.images.size(); i++)
-        {
-            descrWrites[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descrWrites[i].dstSet = triangleDescrSets[i];
-            descrWrites[i].dstBinding = 0;
-            descrWrites[i].dstArrayElement = 0;
-            descrWrites[i].descriptorCount = 1;
-            descrWrites[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            descrWrites[i].pBufferInfo = &bufferInfos[i];
-        }
-
-        vkUpdateDescriptorSets(vkState.device, vkSwapchain.images.size(), descrWrites.data(), 0, nullptr);
-    }
+    updateUBODescriptorSets(vkState.device, triangleDescrSets.data(), triangleUBOs.data(),
+                            triangleUBOs.size(), sizeof(TriangleUniformData));
 
     VkPipelineLayout trianglePipelineLayout{};
     {
@@ -239,6 +90,7 @@ int main() {
     VkViewport viewport{ 0.0f, 0.0f, (float)vkSwapchain.extent.width, (float)vkSwapchain.extent.height, 0.0f, 1.0f };
     GraphicsPipeline trianglePipeline{ createGraphicsPipeline(vkState.device, triangleRenderPass, viewport, trianglePipelineLayout) };
 
+    // Main Loop
     while (!glfwWindowShouldClose(window)){
         uint32_t nextImageID{};
         VkResult acquireRes{vkAcquireNextImageKHR(vkState.device, vkSwapchain.swapchain, -1, imageAcquireSemaphore, VK_NULL_HANDLE, &nextImageID)};
@@ -247,7 +99,7 @@ int main() {
         VK_CHECK(vkWaitForFences(vkState.device, 1, &fences[nextImageID], VK_FALSE, -1));
         VK_CHECK(vkResetFences(vkState.device, 1, &fences[nextImageID]));
 
-        triangleUBOs[nextImageID].data->time += 0.02f;
+        ((TriangleUniformData*)(triangleUBOs[nextImageID].data))->time += 0.02f;
 
         VkCommandBufferBeginInfo cmdBeginInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
         cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -349,11 +201,7 @@ int main() {
         destroyPipeline(vkState.device, trianglePipeline);
         vkDestroyPipelineLayout(vkState.device, trianglePipelineLayout, nullptr);
 
-        vkUnmapMemory(vkState.device, triangleUBOs[0].deviceMemory);
-
-        for (int i{}; i < vkSwapchain.images.size(); i++){
-            vkDestroyBuffer(vkState.device, triangleUBOs[i].buffer, nullptr);
-        }
+        destroySimpleUBOs(vkState.device, triangleUBOs.data(), triangleUBOs.size(), triangleMemory);
 
         vkDestroyDescriptorPool(vkState.device, triangleDescrPool, nullptr);
 

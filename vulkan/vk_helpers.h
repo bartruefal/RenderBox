@@ -79,4 +79,9 @@ struct GraphicsPipeline{
     VkShaderModule fragmentShader;
 };
 
+struct SimpleUBO{
+    VkBuffer buffer;
+    void* data;
+};
+
 #endif // VK_HELPERS_H
