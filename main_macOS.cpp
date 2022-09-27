@@ -6,6 +6,31 @@
 #include <stdio.h>
 #include <vector>
 
+struct UniformData{
+    float time;
+};
+
+struct SimpleUBO{
+    VkBuffer buffer;
+    VkDeviceMemory deviceMemory;
+    UniformData* data;
+};
+
+uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t memoryTypeMask, VkMemoryPropertyFlags memoryFlags){
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+    for (int i{}; i < memProperties.memoryTypeCount; i++){
+        if ((memoryTypeMask & (1 << i)) &&
+            (memProperties.memoryTypes[i].propertyFlags & memoryFlags)){
+            return i;
+        }
+    }
+
+    assert(!"Memory type not found!");
+    return -1;
+}
+
 VkRenderPass createRenderPass(VkDevice device, VkFormat swapchainFormat){
     VkAttachmentDescription attachments[1]{};
     attachments[0].format = swapchainFormat;
@@ -101,9 +126,113 @@ int main() {
                                             vkSwapchain.surfaceFormat.format, vkSwapchain.extent);
     }
 
+    VkDescriptorSetLayout triangleDescrLayout{};
+    {
+        VkDescriptorSetLayoutBinding binding{};
+        binding.binding = 0;
+        binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        binding.descriptorCount = 1;
+        binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        VkDescriptorSetLayoutCreateInfo descrSetLayoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        descrSetLayoutInfo.bindingCount = 1;
+        descrSetLayoutInfo.pBindings = &binding;
+
+        VK_CHECK(vkCreateDescriptorSetLayout(vkState.device, &descrSetLayoutInfo, nullptr, &triangleDescrLayout));
+    }
+
+    VkDescriptorPool triangleDescrPool{};
+    std::vector<VkDescriptorSet> triangleDescrSets(vkSwapchain.images.size());
+    {
+        VkDescriptorPoolSize descrPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (uint32_t)vkSwapchain.images.size() };
+
+        VkDescriptorPoolCreateInfo descrPoolCreateInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+        descrPoolCreateInfo.maxSets = vkSwapchain.images.size();
+        descrPoolCreateInfo.poolSizeCount = 1;
+        descrPoolCreateInfo.pPoolSizes = &descrPoolSize;
+
+        VK_CHECK(vkCreateDescriptorPool(vkState.device, &descrPoolCreateInfo, nullptr, &triangleDescrPool));
+
+        std::vector<VkDescriptorSetLayout> triangleDescrSetLayouts(vkSwapchain.images.size(), triangleDescrLayout);
+
+        VkDescriptorSetAllocateInfo descrSetAllocInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+        descrSetAllocInfo.descriptorPool = triangleDescrPool;
+        descrSetAllocInfo.descriptorSetCount = vkSwapchain.images.size();
+        descrSetAllocInfo.pSetLayouts = triangleDescrSetLayouts.data();
+
+        VK_CHECK(vkAllocateDescriptorSets(vkState.device, &descrSetAllocInfo, triangleDescrSets.data()));
+    }
+
+    std::vector<SimpleUBO> triangleUBOs(vkSwapchain.images.size());
+    for (int i{}; i < vkSwapchain.images.size(); i++)
+    {
+        VkBufferCreateInfo bufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        bufferInfo.size = sizeof(UniformData);
+        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.queueFamilyIndexCount = 1;
+        bufferInfo.pQueueFamilyIndices = &vkState.renderQueueFamilyID;
+
+        VK_CHECK(vkCreateBuffer(vkState.device, &bufferInfo, nullptr, &triangleUBOs[i].buffer));
+    }
+
+    {
+        VkDeviceMemory triangleBufferMemory{};
+
+        VkMemoryRequirements bufferReqs{};
+        vkGetBufferMemoryRequirements(vkState.device, triangleUBOs[0].buffer, &bufferReqs);
+
+        VkMemoryAllocateInfo allocInfo{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        allocInfo.memoryTypeIndex = findMemoryType(vkState.physicalDevice, bufferReqs.memoryTypeBits,
+                                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        allocInfo.allocationSize = bufferReqs.size * vkSwapchain.images.size();
+
+        VK_CHECK(vkAllocateMemory(vkState.device, &allocInfo, nullptr, &triangleBufferMemory));
+
+        UniformData* mappedData{};
+        VK_CHECK(vkMapMemory(vkState.device, triangleBufferMemory, 0, bufferReqs.size * vkSwapchain.images.size(), 0, (void**)&mappedData));
+
+        for (int i{}; i < vkSwapchain.images.size(); i++)
+        {
+            VkDeviceSize offset{i * bufferReqs.size};
+            triangleUBOs[i].deviceMemory = triangleBufferMemory;
+            triangleUBOs[i].data = mappedData + i;
+
+            VK_CHECK(vkBindBufferMemory(vkState.device, triangleUBOs[i].buffer, triangleBufferMemory, offset));
+        }
+    }
+
+    {
+        std::vector<VkDescriptorBufferInfo> bufferInfos(vkSwapchain.images.size());
+        for (int i{}; i < vkSwapchain.images.size(); i++)
+        {
+            bufferInfos[i].buffer = triangleUBOs[i].buffer;
+            bufferInfos[i].offset = 0;
+            bufferInfos[i].range = sizeof(UniformData);
+        }
+
+        std::vector<VkWriteDescriptorSet> descrWrites(vkSwapchain.images.size());
+        for (int i{}; i < vkSwapchain.images.size(); i++)
+        {
+            descrWrites[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descrWrites[i].dstSet = triangleDescrSets[i];
+            descrWrites[i].dstBinding = 0;
+            descrWrites[i].dstArrayElement = 0;
+            descrWrites[i].descriptorCount = 1;
+            descrWrites[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descrWrites[i].pBufferInfo = &bufferInfos[i];
+        }
+
+        vkUpdateDescriptorSets(vkState.device, vkSwapchain.images.size(), descrWrites.data(), 0, nullptr);
+    }
+
     VkPipelineLayout trianglePipelineLayout{};
     {
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{ VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &triangleDescrLayout;
+
         VK_CHECK(vkCreatePipelineLayout(vkState.device, &pipelineLayoutInfo, nullptr, &trianglePipelineLayout));
     }
 
@@ -117,6 +246,8 @@ int main() {
 
         VK_CHECK(vkWaitForFences(vkState.device, 1, &fences[nextImageID], VK_FALSE, -1));
         VK_CHECK(vkResetFences(vkState.device, 1, &fences[nextImageID]));
+
+        triangleUBOs[nextImageID].data->time += 0.02f;
 
         VkCommandBufferBeginInfo cmdBeginInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
         cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -143,7 +274,7 @@ int main() {
                                     0, nullptr, 0, nullptr, 1, &presentToRenderBarrier);
             }
 
-            VkClearValue clearValue{{{0.2f, 0.3f, 0.4f, 1.0f}}};
+            VkClearValue clearValue{{{0.1f, 0.1f, 0.1f, 1.0f}}};
 
             VkRenderPassBeginInfo renderPassBeginInfo{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
             renderPassBeginInfo.renderPass = triangleRenderPass;
@@ -154,6 +285,8 @@ int main() {
             renderPassBeginInfo.pClearValues = &clearValue;
 
             vkCmdBeginRenderPass(cmdBuffers[nextImageID], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+            vkCmdBindDescriptorSets(cmdBuffers[nextImageID], VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipelineLayout, 0, 1, &triangleDescrSets[nextImageID], 0, nullptr);
 
             vkCmdBindPipeline(cmdBuffers[nextImageID], VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline.pipeline);
             vkCmdDraw(cmdBuffers[nextImageID], 3, 1, 0, 0);
@@ -215,6 +348,16 @@ int main() {
 
         destroyPipeline(vkState.device, trianglePipeline);
         vkDestroyPipelineLayout(vkState.device, trianglePipelineLayout, nullptr);
+
+        vkUnmapMemory(vkState.device, triangleUBOs[0].deviceMemory);
+
+        for (int i{}; i < vkSwapchain.images.size(); i++){
+            vkDestroyBuffer(vkState.device, triangleUBOs[i].buffer, nullptr);
+        }
+
+        vkDestroyDescriptorPool(vkState.device, triangleDescrPool, nullptr);
+
+        vkDestroyDescriptorSetLayout(vkState.device, triangleDescrLayout, nullptr);
 
         for (int i{}; i < vkSwapchain.images.size(); i++){
             vkDestroyFramebuffer(vkState.device, framebuffers[i], nullptr);
