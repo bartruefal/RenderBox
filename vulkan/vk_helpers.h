@@ -1,7 +1,7 @@
 #ifndef VK_HELPERS_H
 #define VK_HELPERS_H
 
-#include <vulkan/vulkan.h>
+#include <volk.h>
 #include <assert.h>
 #include <vector>
 
@@ -34,9 +34,6 @@ VkDebugReportCallbackEXT registerDebugReport(VkInstance instance){
     callbackInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
     callbackInfo.pfnCallback = debugReportCallback;
 
-    PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT{ (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT") };
-    assert(vkCreateDebugReportCallbackEXT);
-
     VkDebugReportCallbackEXT debugCallback{};
     VK_CHECK(vkCreateDebugReportCallbackEXT(instance, &callbackInfo, nullptr, &debugCallback));
 
@@ -48,9 +45,6 @@ VkDebugReportCallbackEXT registerDebugReport(VkInstance instance){
 
 void destroyDebugReportCallback(VkInstance instance, VkDebugReportCallbackEXT debugCallback){
 #ifdef RB_DEBUG
-    PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT{ (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT") };
-    assert(vkDestroyDebugReportCallbackEXT);
-
     vkDestroyDebugReportCallbackEXT(instance, debugCallback, nullptr);
 #endif
 }
@@ -79,8 +73,9 @@ struct GraphicsPipeline{
     VkShaderModule fragmentShader;
 };
 
-struct SimpleUBO{
+struct Buffer{
     VkBuffer buffer;
+    VkDeviceMemory memory;
     void* data;
 };
 

@@ -1,0 +1,9 @@
+[submodule "volk"]
+	path = volk
+	url = https://github.com/zeux/volk.git
+[submodule "meshoptimizer"]
+	path = meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git
+[submodule "fast_obj"]
+	path = fast_obj
+	url = https://github.com/thisistherk/fast_obj.git

@@ -3,6 +3,8 @@
 #include <vector>
 
 VulkanState initializeVulkanState(){
+    VK_CHECK(volkInitialize());
+
     VulkanState vkState{};
     vkState.renderQueueFamilyID = -1;
 
@@ -37,6 +39,9 @@ VulkanState initializeVulkanState(){
     instanceInfo.ppEnabledExtensionNames = instanceExtensionNames.data();
 
     VK_CHECK(vkCreateInstance(&instanceInfo, nullptr, &vkState.instance));
+
+    volkLoadInstance(vkState.instance);
+
     vkState.debugCallback = registerDebugReport(vkState.instance);
 
     // TODO: select proper physical device
