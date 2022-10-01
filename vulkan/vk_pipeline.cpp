@@ -31,7 +31,7 @@ VkShaderModule createShaderModule(VkDevice device, const char* filename){
     return shaderModule;
 }
 
-GraphicsPipeline createGraphicsPipeline(VkDevice device, VkRenderPass renderPass, VkViewport viewport, VkPipelineLayout pipelineLayout, uint32_t vertexSize){
+GraphicsPipeline createGraphicsPipeline(VkDevice device, VkRenderPass renderPass, VkViewport viewport, VkPipelineLayout pipelineLayout){
     GraphicsPipeline pipeline{};
     pipeline.vertexShader = createShaderModule(device, "shaders/mesh.vs.spv");
     pipeline.fragmentShader = createShaderModule(device, "shaders/mesh.fs.spv");
@@ -47,33 +47,7 @@ GraphicsPipeline createGraphicsPipeline(VkDevice device, VkRenderPass renderPass
     shaderStages[1].module = pipeline.fragmentShader;
     shaderStages[1].pName = "main";
 
-    VkVertexInputBindingDescription inputBinding{};
-    inputBinding.binding = 0;
-    inputBinding.stride = vertexSize;
-    inputBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    VkVertexInputAttributeDescription attrDescr[3]{};
-    attrDescr[0].location = 0;
-    attrDescr[0].binding = 0;
-    attrDescr[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attrDescr[0].offset = 0;
-
-    attrDescr[1].location = 1;
-    attrDescr[1].binding = 0;
-    attrDescr[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attrDescr[1].offset = 12;
-
-    attrDescr[2].location = 2;
-    attrDescr[2].binding = 0;
-    attrDescr[2].format = VK_FORMAT_R32G32_SFLOAT;
-    attrDescr[2].offset = 24;
-
     VkPipelineVertexInputStateCreateInfo vertexState{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
-    vertexState.vertexBindingDescriptionCount = 1;
-    vertexState.pVertexBindingDescriptions = &inputBinding;
-    vertexState.vertexAttributeDescriptionCount = 3;
-    vertexState.pVertexAttributeDescriptions = attrDescr;
-
     VkPipelineInputAssemblyStateCreateInfo inputAssemblerState{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
     inputAssemblerState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 

@@ -16,9 +16,6 @@ struct Mesh{
 Mesh loadObjMesh(const char* objFile) {
     fastObjMesh* objMesh{ fast_obj_read(objFile) };
     assert(objMesh);
-    assert(objMesh->position_count == objMesh->normal_count);
-    assert(objMesh->position_count % 3 == 0);
-    assert(objMesh->texcoord_count % 2 == 0);
 
     uint32_t indexCount{};
     for (int i{}; i < objMesh->face_count; i++){
