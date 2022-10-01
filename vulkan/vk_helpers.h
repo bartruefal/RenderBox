@@ -1,7 +1,7 @@
 #ifndef VK_HELPERS_H
 #define VK_HELPERS_H
 
-#include <volk.h>
+#include <volk/volk.h>
 #include <assert.h>
 #include <vector>
 

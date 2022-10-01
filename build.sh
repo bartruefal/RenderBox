@@ -41,9 +41,7 @@ done
 
 # build the app
 GLFW_INCLUDE_PATH="/opt/homebrew/include"
-VOLK_INCLUDE_PATH="volk"
-MESHOPTIMIZER_INCLUDE_PATH="meshoptimizer/src"
-FASTOBJ_INCLUDE_PATH="fast_obj"
+EXTERNAL_INCLUDE_PATH="external"
 
 GLFW_LIBRARY_PATH="/opt/homebrew/lib"
 VULKAN_LIBRARY_PATH="/Users/bart/VulkanSDK/1.3.224.1/macOS/lib"
@@ -55,11 +53,10 @@ clang++ -Wall -std=c++17 \
         $APP_COMPILER_ARGS \
         $APP_PREPROC_DEFINE \
         -o $BUILD_FOLDER/RenderBox \
-        -I$GLFW_INCLUDE_PATH -I$VOLK_INCLUDE_PATH \
-        -I$MESHOPTIMIZER_INCLUDE_PATH -I$FASTOBJ_INCLUDE_PATH \
+        -I$GLFW_INCLUDE_PATH -I$EXTERNAL_INCLUDE_PATH \
         -L$GLFW_LIBRARY_PATH -L$VULKAN_LIBRARY_PATH \
         -l$VULKAN_LIB -l$GLFW_LIB \
-        volk/volk.c \
-        fast_obj/fast_obj.c \
-        meshoptimizer/src/indexgenerator.cpp \
+        external/volk/volk.c \
+        external/fast_obj/fast_obj.c \
+        external/meshoptimizer/src/indexgenerator.cpp \
         main_macOS.cpp

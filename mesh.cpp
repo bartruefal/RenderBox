@@ -1,6 +1,6 @@
 #include <vector>
-#include <fast_obj.h>
-#include <meshoptimizer.h>
+#include <fast_obj/fast_obj.h>
+#include <meshoptimizer/src/meshoptimizer.h>
 
 struct Vertex{
     float position[3];
