@@ -1,15 +1,6 @@
 #!/bin/bash
 
-if [[ $1 = "-D" ]]
-then
-    SHADER_COMPILER_ARGS="-V -Od"
-    APP_PREPROC_DEFINES="-DRB_DEBUG"
-    APP_COMPILER_ARGS="-g -O0"
-    BUILD_FOLDER="build/Debug"
-
-    echo "Starting DEBUG build..."
-    echo ""
-elif [[ $1 = "-R" ]]
+if [[ $1 = "-R" ]]
 then
     SHADER_COMPILER_ARGS="-V"
     APP_PREPROC_DEFINES="-DRB_RELEASE"
@@ -19,8 +10,13 @@ then
     echo "Starting RELEASE build..."
     echo ""
 else
-    echo "Build script should have a debug(\"-D\") or release(\"-R\") argument!"
-    exit 0
+    SHADER_COMPILER_ARGS="-V -Od"
+    APP_PREPROC_DEFINES="-DRB_DEBUG"
+    APP_COMPILER_ARGS="-g -O0"
+    BUILD_FOLDER="build/Debug"
+
+    echo "Starting DEBUG build..."
+    echo ""
 fi
 
 rm -rf $BUILD_FOLDER

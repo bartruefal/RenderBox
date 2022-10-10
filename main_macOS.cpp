@@ -9,6 +9,7 @@
 #include "vulkan/vk_descriptor_set.cpp"
 #include "vulkan/vk_cmd_buffers.cpp"
 #include "vulkan/vk_memory.cpp"
+#include "vulkan/vk_queries.cpp"
 
 #include "mesh.cpp"
 
@@ -28,6 +29,10 @@ int main() {
     VulkanState vkState{ initializeVulkanState() };
     VulkanSwapchain vkSwapchain{ createSwapchain(window, vkState) };
 
+    VkPhysicalDeviceProperties physDevProps{};
+    vkGetPhysicalDeviceProperties(vkState.physicalDevice, &physDevProps);
+    assert(physDevProps.limits.timestampComputeAndGraphics);
+
     std::vector<VkCommandBuffer> cmdBuffers(vkSwapchain.images.size());
     VkCommandPool cmdPool{ allocateCommandBuffers(vkState, cmdBuffers.data(), cmdBuffers.size()) };
 
@@ -45,6 +50,8 @@ int main() {
     for (int i{}; i < vkSwapchain.images.size(); i++){
         VK_CHECK(vkCreateFence(vkState.device, &fenceCreateInfo, nullptr, &fences[i]));
     }
+
+    VkQueryPool queryPool{ createTimestampQueryPool(vkState.device, 2 * vkSwapchain.images.size()) };
 
     VkRenderPass renderPass{ createRenderPass(vkState.device, vkSwapchain.surfaceFormat.format) };
 
@@ -193,11 +200,28 @@ int main() {
     VkViewport viewport{ 0.0f, 0.0f, (float)vkSwapchain.extent.width, (float)vkSwapchain.extent.height, 0.0f, 1.0f };
     GraphicsPipeline pipeline{ createGraphicsPipeline(vkState.device, renderPass, viewport, pipelineLayout) };
 
+    double avgCPUFrameTime{};
+    double avgGPUFrameTime{};
+    int frameID{};
+
     // Main Loop
     while (!glfwWindowShouldClose(window)){
+        double beginFrameTimeStamp{ glfwGetTime() };
+
         uint32_t nextImageID{};
         VkResult acquireRes{vkAcquireNextImageKHR(vkState.device, vkSwapchain.swapchain, -1, imageAcquireSemaphore, VK_NULL_HANDLE, &nextImageID)};
         assert(acquireRes == VK_SUCCESS || acquireRes == VK_SUBOPTIMAL_KHR);
+
+        double gpuFrameTime{};
+        if (frameID > 10)
+        {
+            uint64_t queryResults[2];
+            VK_CHECK(vkGetQueryPoolResults(vkState.device, queryPool, nextImageID * 2, 2,
+                                           sizeof(queryResults), queryResults, sizeof(queryResults[0]),
+                                           VK_QUERY_RESULT_WAIT_BIT | VK_QUERY_RESULT_64_BIT));
+
+            gpuFrameTime = double(queryResults[1] - queryResults[0]) * physDevProps.limits.timestampPeriod * 1e-6;
+        }
 
         VK_CHECK(vkWaitForFences(vkState.device, 1, &fences[nextImageID], VK_FALSE, -1));
         VK_CHECK(vkResetFences(vkState.device, 1, &fences[nextImageID]));
@@ -209,6 +233,9 @@ int main() {
 
         VK_CHECK(vkBeginCommandBuffer(cmdBuffers[nextImageID], &cmdBeginInfo));
         {
+            vkCmdResetQueryPool(cmdBuffers[nextImageID], queryPool, nextImageID * 2, 2);
+            vkCmdWriteTimestamp(cmdBuffers[nextImageID], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queryPool, nextImageID * 2);
+
             {
                 VkImageMemoryBarrier presentToRenderBarrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
                 presentToRenderBarrier.srcAccessMask = 0;
@@ -266,6 +293,8 @@ int main() {
                                     VK_DEPENDENCY_BY_REGION_BIT,
                                     0, nullptr, 0, nullptr, 1, &renderToPresentBarrier);
             }
+
+            vkCmdWriteTimestamp(cmdBuffers[nextImageID], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, queryPool, nextImageID * 2 + 1);
         }
         VK_CHECK(vkEndCommandBuffer(cmdBuffers[nextImageID]));
 
@@ -294,6 +323,20 @@ int main() {
         VkResult presentRes{ vkQueuePresentKHR(vkState.renderQueue, &presentInfo) };
         assert(presentRes == VK_SUCCESS || presentRes == VK_SUBOPTIMAL_KHR);
 
+        {
+            double endFrameTimeStamp{ glfwGetTime() };
+            double cpuFrameTime{ (endFrameTimeStamp - beginFrameTimeStamp) * 1000.0 };
+            avgCPUFrameTime = frameID > 100 ? avgCPUFrameTime * 0.99 + cpuFrameTime * 0.01 : cpuFrameTime;
+            avgGPUFrameTime = frameID > 100 ? avgGPUFrameTime * 0.99 + gpuFrameTime * 0.01 : gpuFrameTime;
+
+            char frameTimeStr[256];
+            sprintf(frameTimeStr, "CPU: %.2f ms |------| GPU: %.2f ms", avgCPUFrameTime, avgGPUFrameTime);
+
+            glfwSetWindowTitle(window, frameTimeStr);
+        }
+
+        frameID++;
+
         glfwPollEvents();
     }
  
@@ -319,6 +362,8 @@ int main() {
         }
 
         vkDestroyRenderPass(vkState.device, renderPass, nullptr);
+
+        destroyQueryPool(vkState.device, queryPool);
 
         for (int i{}; i < vkSwapchain.images.size(); i++){
             vkDestroyFence(vkState.device, fences[i], nullptr);
